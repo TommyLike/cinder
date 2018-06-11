@@ -233,6 +233,19 @@ def notify_about_capacity_usage(context, capacity, suffix,
                                             usage_info)
 
 
+def build_resource_from_request_spec(request_spec=None):
+    if not request_spec:
+        return {}
+    volume_properties = request_spec.get('volume_properties', {})
+    volume_size = volume_properties.get('size')
+    if volume_size:
+        return {'VOLUME_GB': volume_size}
+    else:
+        raise exception.InvalidVolume(
+            message="Can't find volume size attribute "
+                    "in RequestSpec's volume properties.")
+
+
 @utils.if_notifications_enabled
 def notify_about_replication_usage(context, volume, suffix,
                                    extra_usage_info=None, host=None):

@@ -91,7 +91,8 @@ class SchedulerManager(manager.CleanableManager, manager.Manager):
                  *args, **kwargs):
         if not scheduler_driver:
             scheduler_driver = CONF.scheduler_driver
-        self.driver = importutils.import_object(scheduler_driver)
+        self.driver = importutils.import_object(scheduler_driver,
+                                                manager=self)
         super(SchedulerManager, self).__init__(*args, **kwargs)
         self._startup_delay = True
         self.volume_api = volume_rpcapi.VolumeAPI()
@@ -122,41 +123,6 @@ class SchedulerManager(manager.CleanableManager, manager.Manager):
                                  run_immediately=True)
     def _clean_expired_reservation(self, context):
         QUOTAS.expire(context)
-
-    def update_service_capabilities(self, context, service_name=None,
-                                    host=None, capabilities=None,
-                                    cluster_name=None, timestamp=None,
-                                    **kwargs):
-        """Process a capability update from a service node."""
-        if capabilities is None:
-            capabilities = {}
-        # If we received the timestamp we have to deserialize it
-        elif timestamp:
-            timestamp = datetime.strptime(timestamp,
-                                          timeutils.PERFECT_TIME_FORMAT)
-
-        self.driver.update_service_capabilities(service_name,
-                                                host,
-                                                capabilities,
-                                                cluster_name,
-                                                timestamp)
-
-    def notify_service_capabilities(self, context, service_name,
-                                    capabilities, host=None, backend=None,
-                                    timestamp=None):
-        """Process a capability update from a service node."""
-        # TODO(geguileo): On v4 remove host field.
-        if capabilities is None:
-            capabilities = {}
-        # If we received the timestamp we have to deserialize it
-        elif timestamp:
-            timestamp = datetime.strptime(timestamp,
-                                          timeutils.PERFECT_TIME_FORMAT)
-        backend = backend or host
-        self.driver.notify_service_capabilities(service_name,
-                                                backend,
-                                                capabilities,
-                                                timestamp)
 
     def _wait_for_scheduler(self):
         # NOTE(dulek): We're waiting for scheduler to announce that it's ready
@@ -228,8 +194,8 @@ class SchedulerManager(manager.CleanableManager, manager.Manager):
         try:
             tgt_backend = self.driver.backend_passes_filters(
                 ctxt, backend, request_spec, filter_properties)
-            tgt_backend.consume_from_volume(
-                {'size': request_spec['volume_properties']['size']})
+            self.driver.host_manager.consume_resources(
+                tgt_backend, request_spec)
         except exception.NoValidBackend as ex:
             self._set_snapshot_state_and_notify('create_snapshot',
                                                 snapshot,
@@ -387,8 +353,8 @@ class SchedulerManager(manager.CleanableManager, manager.Manager):
             backend = self.driver.backend_passes_filters(
                 context, volume.service_topic_queue, request_spec,
                 filter_properties)
-            backend.consume_from_volume({'size': volume.size})
-
+            self.driver.host_manager.consume_resources(
+                backend, request_spec)
         except exception.NoValidBackend as ex:
             self._set_snapshot_state_and_notify('manage_existing_snapshot',
                                                 snapshot,
@@ -416,8 +382,8 @@ class SchedulerManager(manager.CleanableManager, manager.Manager):
                 context,
                 backend,
                 request_spec, filter_properties)
-            backend_state.consume_from_volume(
-                {'size': request_spec['volume_properties']['size']})
+            self.driver.host_manager.consume_resources(
+                backend_state, request_spec)
         except exception.NoValidBackend:
             LOG.error("Desired host %(host)s does not have enough "
                       "capacity.", {'host': backend})
@@ -443,8 +409,8 @@ class SchedulerManager(manager.CleanableManager, manager.Manager):
                 context,
                 volume.service_topic_queue,
                 request_spec, filter_properties)
-            backend_state.consume_from_volume(
-                {'size': new_size - volume.size})
+            self.driver.host_manager.consume_resources(
+                backend_state, request_spec)
             volume_rpcapi.VolumeAPI().extend_volume(context, volume, new_size,
                                                     reservations)
         except exception.NoValidBackend as ex:

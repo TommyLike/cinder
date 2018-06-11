@@ -188,30 +188,6 @@ class SchedulerDependentManager(ThreadPoolManager):
         """Remember these capabilities to send on next periodic update."""
         self.last_capabilities = capabilities
 
-    def _publish_service_capabilities(self, context):
-        """Pass data back to the scheduler at a periodic interval."""
-        if self.last_capabilities:
-            LOG.debug('Notifying Schedulers of capabilities ...')
-            self.scheduler_rpcapi.update_service_capabilities(
-                context,
-                self.service_name,
-                self.host,
-                self.last_capabilities,
-                self.cluster)
-            try:
-                self.scheduler_rpcapi.notify_service_capabilities(
-                    context,
-                    self.service_name,
-                    self.service_topic_queue,
-                    self.last_capabilities)
-            except exception.ServiceTooOld as e:
-                # This means we have Newton's c-sch in the deployment, so
-                # rpcapi cannot send the message. We can safely ignore the
-                # error. Log it because it shouldn't happen after upgrade.
-                msg = ("Failed to notify about cinder-volume service "
-                       "capabilities for host %(host)s. This is normal "
-                       "during a live upgrade. Error: %(e)s")
-                LOG.warning(msg, {'host': self.host, 'e': e})
 
     def reset(self):
         super(SchedulerDependentManager, self).reset()

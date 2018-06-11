@@ -322,16 +322,18 @@ class FilterScheduler(driver.Scheduler):
         # Revert volume consumed capacity if it's a rescheduled request
         retry = filter_properties.get('retry', {})
         if retry.get('backends', []):
-            self.host_manager.revert_volume_consumed_capacity(
+            self.host_manager.consume_resources(
                 retry['backends'][-1],
-                request_spec['volume_properties']['size'])
+                {'volume_properties':
+                     {'size': -1 * request_spec['volume_properties']['size']}})
         # Find our local list of acceptable backends by filtering and
         # weighing our options. we virtually consume resources on
         # it so subsequent selections can adjust accordingly.
 
         # Note: remember, we are using an iterator here. So only
         # traverse this list once.
-        backends = self.host_manager.get_all_backend_states(elevated)
+        backends = self.host_manager.get_backend_states(
+            elevated, request_spec=request_spec)
 
         # Filter local hosts based on requirements ...
         backends = self.host_manager.get_filtered_backends(backends,
@@ -405,7 +407,7 @@ class FilterScheduler(driver.Scheduler):
 
             # Note: remember, we are using an iterator here. So only
             # traverse this list once.
-            all_backends = self.host_manager.get_all_backend_states(elevated)
+            all_backends = self.host_manager.get_backend_states(elevated)
             if not all_backends:
                 return []
 
@@ -496,7 +498,7 @@ class FilterScheduler(driver.Scheduler):
 
         # Note: remember, we are using an iterator here. So only
         # traverse this list once.
-        all_backends = self.host_manager.get_all_backend_states(elevated)
+        all_backends = self.host_manager.get_backend_states(elevated)
         if not all_backends:
             return []
 
@@ -562,7 +564,8 @@ class FilterScheduler(driver.Scheduler):
         backend_state = top_backend.obj
         LOG.debug("Choosing %s", backend_state.backend_id)
         volume_properties = request_spec['volume_properties']
-        backend_state.consume_from_volume(volume_properties)
+        self.host_manager.consume_resources(backend_state.backend_id,
+                                            volume_properties)
         return top_backend
 
     def _choose_top_backend_generic_group(self, weighed_backends):

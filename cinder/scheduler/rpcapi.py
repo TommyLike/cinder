@@ -202,40 +202,6 @@ class SchedulerAPI(rpc.RPCAPI):
         timestamp = timestamp or timeutils.utcnow()
         return jsonutils.to_primitive(timestamp)
 
-    def update_service_capabilities(self, ctxt, service_name, host,
-                                    capabilities, cluster_name,
-                                    timestamp=None):
-        msg_args = dict(service_name=service_name, host=host,
-                        capabilities=capabilities)
-
-        version = '3.3'
-        # If server accepts timestamping the capabilities and the cluster name
-        if self.client.can_send_version(version):
-            # Serialize the timestamp
-            msg_args.update(cluster_name=cluster_name,
-                            timestamp=self.prepare_timestamp(timestamp))
-        else:
-            version = '3.0'
-
-        cctxt = self._get_cctxt(fanout=True, version=version)
-        cctxt.cast(ctxt, 'update_service_capabilities', **msg_args)
-
-    @rpc.assert_min_rpc_version('3.1')
-    def notify_service_capabilities(self, ctxt, service_name,
-                                    backend, capabilities, timestamp=None):
-        parameters = {'service_name': service_name,
-                      'capabilities': capabilities}
-        if self.client.can_send_version('3.5'):
-            version = '3.5'
-            parameters.update(backend=backend,
-                              timestamp=self.prepare_timestamp(timestamp))
-        else:
-            version = '3.1'
-            parameters['host'] = backend
-
-        cctxt = self._get_cctxt(version=version)
-        cctxt.cast(ctxt, 'notify_service_capabilities', **parameters)
-
     @rpc.assert_min_rpc_version('3.4')
     def work_cleanup(self, ctxt, cleanup_request):
         """Generate individual service cleanup requests from user request."""

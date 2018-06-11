@@ -73,9 +73,9 @@ def generic_group_update_db(context, group, host, cluster_name):
 class Scheduler(object):
     """The base class that all Scheduler classes should inherit from."""
 
-    def __init__(self):
+    def __init__(self, manager=None):
         self.host_manager = importutils.import_object(
-            CONF.scheduler_host_manager)
+            CONF.scheduler_host_manager, manager=manager)
         self.volume_rpcapi = volume_rpcapi.VolumeAPI()
 
     def reset(self):

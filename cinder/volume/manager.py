@@ -81,6 +81,7 @@ from cinder.volume.flows.manager import create_volume
 from cinder.volume.flows.manager import manage_existing
 from cinder.volume.flows.manager import manage_existing_snapshot
 from cinder.volume import group_types
+from cinder.volume import scheduler_client
 from cinder.volume import rpcapi as volume_rpcapi
 from cinder.volume import utils as vol_utils
 from cinder.volume import volume_types
@@ -200,6 +201,8 @@ class VolumeManager(manager.CleanableManager,
             self.configuration.backend_native_threads_pool_size)
         self.stats = {}
         self.service_uuid = None
+
+        self.scheduler_client = scheduler_client.SchedulerClient()
 
         if not volume_driver:
             # Get from configuration, which will get the default
@@ -2534,7 +2537,9 @@ class VolumeManager(manager.CleanableManager,
     def publish_service_capabilities(self, context):
         """Collect driver status and then publish."""
         self._report_driver_status(context)
-        self._publish_service_capabilities(context)
+        self.scheduler_client.update_backend_capabilities(
+            context, self.service_name, self.host,
+            self.last_capabilities, self.cluster)
 
     def _notify_about_volume_usage(self,
                                    context,
