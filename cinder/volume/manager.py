@@ -45,6 +45,7 @@ from oslo_log import log as logging
 import oslo_messaging as messaging
 from oslo_serialization import jsonutils
 from oslo_service import periodic_task
+from oslo_concurrency import processutils
 from oslo_utils import excutils
 from oslo_utils import importutils
 from oslo_utils import timeutils
@@ -75,6 +76,7 @@ from cinder.objects import consistencygroup
 from cinder.objects import fields
 from cinder import quota
 from cinder import utils
+from cinder.privsep import cgroup
 from cinder import volume as cinder_volume
 from cinder.volume import configuration as config
 from cinder.volume.flows.manager import create_volume
@@ -1060,47 +1062,48 @@ class VolumeManager(manager.CleanableManager,
             # but it is not a requirement for all drivers.
             snapshot.context = context
 
-            model_update = self.driver.create_snapshot(snapshot)
-            if model_update:
-                snapshot.update(model_update)
-                snapshot.save()
-
+            try:
+                cgroup.lvdisplay()
+                LOG.info("display all logic volumes in volume service")
+            except processutils.ProcessExecutionError as err:
+                LOG.error("Failed to execute show logic volume command in "
+                          "volume service with error %s." % six.text_type(err))
         except Exception:
             with excutils.save_and_reraise_exception():
                 snapshot.status = fields.SnapshotStatus.ERROR
                 snapshot.save()
 
-        vol_ref = self.db.volume_get(context, snapshot.volume_id)
-        if vol_ref.bootable:
-            try:
-                self.db.volume_glance_metadata_copy_to_snapshot(
-                    context, snapshot.id, snapshot.volume_id)
-            except exception.GlanceMetadataNotFound:
-                # If volume is not created from image, No glance metadata
-                # would be available for that volume in
-                # volume glance metadata table
-                pass
-            except exception.CinderException as ex:
-                LOG.exception("Failed updating snapshot"
-                              " metadata using the provided volumes"
-                              " %(volume_id)s metadata",
-                              {'volume_id': snapshot.volume_id},
-                              resource=snapshot)
-                snapshot.status = fields.SnapshotStatus.ERROR
-                snapshot.save()
-                raise exception.MetadataCopyFailure(reason=six.text_type(ex))
-
-        snapshot.status = fields.SnapshotStatus.AVAILABLE
-        snapshot.progress = '100%'
-        # Resync with the volume's DB value. This addresses the case where
-        # the snapshot creation was in flight just prior to when the volume's
-        # fixed_key encryption key ID was migrated to Barbican.
-        snapshot.encryption_key_id = vol_ref.encryption_key_id
-        snapshot.save()
-
-        self._notify_about_snapshot_usage(context, snapshot, "create.end")
-        LOG.info("Create snapshot completed successfully",
-                 resource=snapshot)
+        # vol_ref = self.db.volume_get(context, snapshot.volume_id)
+        # if vol_ref.bootable:
+        #     try:
+        #         self.db.volume_glance_metadata_copy_to_snapshot(
+        #             context, snapshot.id, snapshot.volume_id)
+        #     except exception.GlanceMetadataNotFound:
+        #         # If volume is not created from image, No glance metadata
+        #         # would be available for that volume in
+        #         # volume glance metadata table
+        #         pass
+        #     except exception.CinderException as ex:
+        #         LOG.exception("Failed updating snapshot"
+        #                       " metadata using the provided volumes"
+        #                       " %(volume_id)s metadata",
+        #                       {'volume_id': snapshot.volume_id},
+        #                       resource=snapshot)
+        #         snapshot.status = fields.SnapshotStatus.ERROR
+        #         snapshot.save()
+        #         raise exception.MetadataCopyFailure(reason=six.text_type(ex))
+        #
+        # snapshot.status = fields.SnapshotStatus.AVAILABLE
+        # snapshot.progress = '100%'
+        # # Resync with the volume's DB value. This addresses the case where
+        # # the snapshot creation was in flight just prior to when the volume's
+        # # fixed_key encryption key ID was migrated to Barbican.
+        # snapshot.encryption_key_id = vol_ref.encryption_key_id
+        # snapshot.save()
+        #
+        # self._notify_about_snapshot_usage(context, snapshot, "create.end")
+        # LOG.info("Create snapshot completed successfully",
+        #          resource=snapshot)
         return snapshot.id
 
     @coordination.synchronized('{snapshot.id}-{f_name}')

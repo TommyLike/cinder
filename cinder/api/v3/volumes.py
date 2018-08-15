@@ -137,7 +137,7 @@ class VolumeController(volumes_v2.VolumeController):
         for volume in volumes:
             utils.add_visible_admin_metadata(volume)
 
-        req.cache_db_volumes(volumes.objects)
+        #req.cache_db_volumes(volumes.objects)
 
         if is_detail:
             volumes = self._view_builder.detail_list(

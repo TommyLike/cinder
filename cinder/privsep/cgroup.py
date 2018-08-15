@@ -33,3 +33,8 @@ def cgroup_limit(name, rw, dev, bps):
     processutils.execute('cgset', '-r',
                          'blkio.throttle.%s_bps_device=%s %d' % (rw, dev, bps),
                          name)
+
+@cinder.privsep.sys_admin_pctxt.entrypoint
+def lvdisplay():
+    return processutils.execute('lvdisplay, -a')
+

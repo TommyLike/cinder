@@ -52,6 +52,8 @@ from cinder.policies import volume_actions as vol_action_policy
 from cinder.policies import volume_metadata as vol_meta_policy
 from cinder.policies import volume_transfer as vol_transfer_policy
 from cinder.policies import volumes as vol_policy
+from cinder.privsep import cgroup
+from oslo_concurrency import processutils
 from cinder import quota
 from cinder import quota_utils
 from cinder.scheduler import rpcapi as scheduler_rpcapi
@@ -579,51 +581,15 @@ class API(base.Base):
     def get_all(self, context, marker=None, limit=None, sort_keys=None,
                 sort_dirs=None, filters=None, viewable_admin_meta=False,
                 offset=None):
-        context.authorize(vol_policy.GET_ALL_POLICY)
-
-        if filters is None:
-            filters = {}
-
-        allTenants = utils.get_bool_param('all_tenants', filters)
 
         try:
-            if limit is not None:
-                limit = int(limit)
-                if limit < 0:
-                    msg = _('limit param must be positive')
-                    raise exception.InvalidInput(reason=msg)
-        except ValueError:
-            msg = _('limit param must be an integer')
-            raise exception.InvalidInput(reason=msg)
-
-        # Non-admin shouldn't see temporary target of a volume migration, add
-        # unique filter data to reflect that only volumes with a NULL
-        # 'migration_status' or a 'migration_status' that does not start with
-        # 'target:' should be returned (processed in db/sqlalchemy/api.py)
-        if not context.is_admin:
-            filters['no_migration_targets'] = True
-
-        if filters:
-            LOG.debug("Searching by: %s.", six.text_type(filters))
-
-        if context.is_admin and allTenants:
-            # Need to remove all_tenants to pass the filtering below.
-            del filters['all_tenants']
-            volumes = objects.VolumeList.get_all(context, marker, limit,
-                                                 sort_keys=sort_keys,
-                                                 sort_dirs=sort_dirs,
-                                                 filters=filters,
-                                                 offset=offset)
-        else:
-            if viewable_admin_meta:
-                context = context.elevated()
-            volumes = objects.VolumeList.get_all_by_project(
-                context, context.project_id, marker, limit,
-                sort_keys=sort_keys, sort_dirs=sort_dirs, filters=filters,
-                offset=offset)
-
+            result = cgroup.lvdisplay()
+            LOG.info("display all logic volumes")
+        except processutils.ProcessExecutionError as err:
+            LOG.error("Failed to execute show logic volume command with error "
+                      "%s." % six.text_type(err))
         LOG.info("Get all volumes completed successfully.")
-        return volumes
+        return []
 
     def get_volume_summary(self, context, filters=None):
         context.authorize(vol_policy.GET_ALL_POLICY)
